@@ -5,15 +5,48 @@
 /* BOARD CONFIG                                                         */
 /************************************************************************/
 
-#define BUT_PIO PIOA
-#define BUT_PIO_ID ID_PIOA
-#define BUT_PIO_PIN 11
-#define BUT_PIO_PIN_MASK (1 << BUT_PIO_PIN)
+#define BUT_PIO						  PIOA
+#define BUT_PIO_ID					  ID_PIOA
+#define BUT_PIO_IDX					  11
+#define BUT_PIO_IDX_MASK			  (1 << BUT_PIO_PIN)
 
-#define LED_PIO PIOC
-#define LED_PIO_ID ID_PIOC
-#define LED_PIO_IDX 8
-#define LED_IDX_MASK (1 << LED_PIO_IDX)
+#define LED_PIO						  PIOC
+#define LED_PIO_ID					  ID_PIOC
+#define LED_PIO_IDX					  8
+#define LED_PIO_IDX_MASK              (1 << LED_PIO_IDX)
+
+// Config LEDs OLED1
+#define LED1_PIO				      PIOA
+#define LED1_PIO_ID				      ID_PIOA
+#define LED1_PIO_IDX			      0
+#define LED1_PIO_IDX_MASK		      (1u << LED1_PIO_IDX)
+
+#define LED2_PIO				      PIOC
+#define LED2_PIO_ID				      ID_PIOC
+#define LED2_PIO_IDX			      30
+#define LED2_PIO_IDX_MASK		      (1u << LED2_PIO_IDX)
+
+#define LED3_PIO				      PIOB
+#define LED3_PIO_ID				      ID_PIOB
+#define LED3_PIO_IDX			      2
+#define LED3_PIO_IDX_MASK		      (1u << LED3_PIO_IDX)
+
+// Config buttons OLED1
+#define BUT1_PIO					  PIOD
+#define BUT1_PIO_ID					  ID_PIOD
+#define BUT1_PIO_IDX				  28
+#define BUT1_PIO_IDX_MASK			  (1u << BUT1_PIO_IDX)
+
+#define BUT2_PIO					  PIOC
+#define BUT2_PIO_ID                   ID_PIOC
+#define BUT2_PIO_IDX				  31
+#define BUT2_PIO_IDX_MASK			  (1u << BUT2_PIO_IDX)
+
+#define BUT3_PIO					  PIOA
+#define BUT3_PIO_ID					  ID_PIOA
+#define BUT3_PIO_IDX				  19
+#define BUT3_PIO_IDX_MASK			  (1u << BUT3_PIO_IDX)
+
 
 #define USART_COM_ID ID_USART1
 #define USART_COM USART1
@@ -40,6 +73,9 @@ extern void xPortSysTickHandler(void);
 
 /** Semaforo a ser usado pela task led */
 SemaphoreHandle_t xSemaphoreBut;
+SemaphoreHandle_t xSemaphoreBut1;
+SemaphoreHandle_t xSemaphoreBut2;
+SemaphoreHandle_t xSemaphoreBut3;
 
 /** Queue for msg log send data */
 QueueHandle_t xQueueLedFreq;
@@ -49,6 +85,10 @@ QueueHandle_t xQueueLedFreq;
 /************************************************************************/
 
 void but_callback(void);
+void but1_callback(void);
+void but2_callback(void);
+void but3_callback(void);
+
 static void BUT_init(void);
 void pin_toggle(Pio *pio, uint32_t mask);
 static void USART1_init(void);
@@ -97,8 +137,23 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 
 void but_callback(void) {
-  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  xSemaphoreGiveFromISR(xSemaphoreBut, &xHigherPriorityTaskWoken);
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(xSemaphoreBut, &xHigherPriorityTaskWoken);
+}
+
+void but1_callback(void) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(xSemaphoreBut1, &xHigherPriorityTaskWoken);
+}
+
+void but2_callback(void) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(xSemaphoreBut2, &xHigherPriorityTaskWoken);
+}
+
+void but3_callback(void) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	xSemaphoreGiveFromISR(xSemaphoreBut3, &xHigherPriorityTaskWoken);
 }
 
 /************************************************************************/
@@ -185,28 +240,55 @@ void pin_toggle(Pio *pio, uint32_t mask) {
     pio_set(pio, mask);
 }
 
-void LED_init(int estado){
-	pmc_enable_periph_clk(LED_PIO_ID);
-	pio_set_output(LED_PIO, LED_IDX_MASK, estado, 0, 0);
-};
 
+/************************************************************************/
+/* INIT                                                                 */
+/************************************************************************/
 
-static void BUT_init(void) {
-  /* conf botão como entrada */
-  pio_configure(BUT_PIO, PIO_INPUT, BUT_PIO_PIN_MASK,
-                PIO_PULLUP | PIO_DEBOUNCE);
-  pio_set_debounce_filter(BUT_PIO, BUT_PIO_PIN_MASK, 60);
-  pio_enable_interrupt(BUT_PIO, BUT_PIO_PIN_MASK);
-  pio_handler_set(BUT_PIO, BUT_PIO_ID, BUT_PIO_PIN_MASK, PIO_IT_FALL_EDGE,
-                  but_callback);
-
-  pio_get_interrupt_status(BUT_PIO);
-				  
-  /* configura prioridae */
-  NVIC_EnableIRQ(BUT_PIO_ID);
-  NVIC_SetPriority(BUT_PIO_ID, 4);
-
+void configure_output(Pio *p_pio, const pio_type_t ul_type, const uint32_t ul_mask, const uint32_t ul_attribute, uint32_t ul_id ){
+	pmc_enable_periph_clk(ul_id);
+	pio_configure(p_pio, ul_type, ul_mask, ul_attribute);
 }
+
+void configure_input(Pio *p_pio, const pio_type_t ul_type, const uint32_t ul_mask, const uint32_t ul_attribute, uint32_t ul_id){
+	pmc_enable_periph_clk(ul_id);
+	pio_configure(p_pio, ul_type, ul_mask, ul_attribute);
+	pio_set_debounce_filter(p_pio, ul_mask, 60);
+}
+
+void configure_interruption(Pio *p_pio, uint32_t ul_id, uint32_t ul_mask, uint32_t ul_attr, void (*p_handler) (uint32_t, uint32_t)){
+	pio_handler_set(p_pio, ul_id, ul_mask, ul_attr, p_handler);
+	pio_enable_interrupt(p_pio, ul_mask);
+	pio_get_interrupt_status(p_pio);
+	NVIC_EnableIRQ(ul_id);
+	NVIC_SetPriority(ul_id, 4);
+}
+
+void init(void) {
+	// Initialize the board clock
+	sysclk_init();
+
+	// Deactivate WatchDog Timer
+	WDT->WDT_MR = WDT_MR_WDDIS;
+	
+	// LEDs OLED1
+	configure_output(LED_PIO, PIO_OUTPUT_0, LED_PIO_IDX_MASK, PIO_DEFAULT, LED_PIO_ID);
+	configure_output(LED1_PIO, PIO_OUTPUT_0, LED1_PIO_IDX_MASK, PIO_DEFAULT, LED1_PIO_ID);
+	configure_output(LED2_PIO, PIO_OUTPUT_0, LED2_PIO_IDX_MASK, PIO_DEFAULT, LED2_PIO_ID);
+	configure_output(LED3_PIO, PIO_OUTPUT_0, LED3_PIO_IDX_MASK, PIO_DEFAULT, LED2_PIO_ID);
+	
+	
+	configure_input(BUT_PIO, PIO_INPUT, BUT_PIO_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE, BUT_PIO_ID);
+	configure_input(BUT1_PIO, PIO_INPUT, BUT1_PIO_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE, BUT1_PIO_ID);
+	configure_input(BUT2_PIO, PIO_INPUT, BUT2_PIO_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE, BUT2_PIO_ID);
+	configure_input(BUT3_PIO, PIO_INPUT, BUT3_PIO_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE, BUT3_PIO_ID);
+	
+	configure_interruption(BUT_PIO, BUT_PIO_ID, BUT_PIO_IDX_MASK, PIO_IT_FALL_EDGE, but_callback);
+	configure_interruption(BUT1_PIO, BUT1_PIO_ID, BUT1_PIO_IDX_MASK, PIO_IT_FALL_EDGE, but1_callback);
+	configure_interruption(BUT2_PIO, BUT2_PIO_ID, BUT2_PIO_IDX_MASK, PIO_IT_FALL_EDGE, but2_callback);
+	configure_interruption(BUT3_PIO, BUT3_PIO_ID, BUT3_PIO_IDX_MASK, PIO_IT_FALL_EDGE, but3_callback);
+}
+
 
 /************************************************************************/
 /* main                                                                 */
