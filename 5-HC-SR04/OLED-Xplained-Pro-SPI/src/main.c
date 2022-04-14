@@ -153,6 +153,34 @@ float ler_distancia(){
 	return distancia;
 }
 
+// Display:
+int draw_distance(int distance, int x){
+	char dist_str[10];
+	gfx_mono_generic_draw_filled_rect(0, 0, 50, 32, GFX_PIXEL_CLR);
+	sprintf(dist_str, "%d", distance);
+	gfx_mono_draw_string(dist_str, 0, 0, &sysfont);
+	gfx_mono_draw_string("cm", 0, 18, &sysfont);
+	
+	if(x == 0){
+		gfx_mono_generic_draw_filled_rect(53, 0, 74, 31, GFX_PIXEL_CLR);
+	}
+	volatile int posicao = ((-29*distance) + 11998)/398;
+	gfx_mono_generic_draw_horizontal_line(53+x, posicao, 1, GFX_PIXEL_SET);
+	x = x >= 73 ? 0 : x+1;
+	return x;
+}
+
+void draw_error(){
+	gfx_mono_generic_draw_filled_rect(0, 0, 50, 32, GFX_PIXEL_CLR);
+	gfx_mono_draw_string("ERROR", 0, 10, &sysfont);
+}
+
+void draw_error_dis(){
+	gfx_mono_generic_draw_filled_rect(0, 0, 50, 32, GFX_PIXEL_CLR);
+	gfx_mono_draw_string("ERROR", 0, 0, &sysfont);
+	gfx_mono_draw_string(" DIS", 0, 18, &sysfont);
+}
+
 /************************************************************************/
 /* init                                                              */
 /************************************************************************/
@@ -218,21 +246,26 @@ int main (void)
 
 	// Init OLED
 	gfx_mono_ssd1306_init();
+	
+	// x do gráfico:
+	int x_grafico = 0;
+	
+	// espaço do gráfico:
+	gfx_mono_generic_draw_vertical_line(52, 0, 32, GFX_PIXEL_SET);
+	gfx_mono_generic_draw_horizontal_line(52, 31, 75, GFX_PIXEL_SET);
   
 
 	/* Insert application code here, after the board has been initialized. */
 	while(1) {
 		if (erro_flag){
-			gfx_mono_draw_string("ERROR     ", 5, 10, &sysfont);
+			draw_error();
 			erro_flag = 0;
 		} else if(echo_flag){
 			int distancia = ler_distancia();
 			if(distancia != -1){
-				char dist_str[10];
-				sprintf(dist_str, "%d cm    ", distancia);
-				gfx_mono_draw_string(dist_str, 5, 10, &sysfont);
+				x_grafico = draw_distance(distancia, x_grafico);
 			} else {
-				gfx_mono_draw_string("ERROR DIS ", 5, 10, &sysfont);
+				draw_error_dis();
 				erro_flag = 0;
 			}
 			call_flag = 0;
