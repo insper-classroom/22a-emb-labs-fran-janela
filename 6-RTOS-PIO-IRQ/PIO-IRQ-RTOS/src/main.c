@@ -8,7 +8,7 @@
 #define BUT_PIO						  PIOA
 #define BUT_PIO_ID					  ID_PIOA
 #define BUT_PIO_IDX					  11
-#define BUT_PIO_IDX_MASK			  (1 << BUT_PIO_PIN)
+#define BUT_PIO_IDX_MASK			  (1 << BUT_PIO_IDX)
 
 #define LED_PIO						  PIOC
 #define LED_PIO_ID					  ID_PIOC
@@ -180,7 +180,7 @@ static void task_led(void *pvParameters) {
     }
 
     /* pisca LED */
-    pin_toggle(LED_PIO, LED_IDX_MASK);
+    pin_toggle(LED_PIO, LED_PIO_IDX_MASK);
 
     /* suspende por delayMs */
     vTaskDelay(delayMs);
@@ -197,17 +197,28 @@ static void task_but(void *pvParameters) {
   for (;;) {
     /* aguarda por tempo inderteminado até a liberacao do semaforo */
     if (xSemaphoreTake(xSemaphoreBut, 1000)) {
-      /* atualiza frequencia */
-      delayTicks -= 100;
+	    /* atualiza frequencia */
+	    delayTicks -= 100;
 
-      /* envia nova frequencia para a task_led */
-      xQueueSend(xQueueLedFreq, (void *)&delayTicks, 10);
+	    /* envia nova frequencia para a task_led */
+	    xQueueSend(xQueueLedFreq, (void *)&delayTicks, 10);
 
-      /* garante range da freq. */
-      if (delayTicks == 100) {
-        delayTicks = 900;
-      }
-    }
+	    /* garante range da freq. */
+	    if (delayTicks == 100) {
+		    delayTicks = 900;
+	    }
+    } else if (xSemaphoreTake(xSemaphoreBut1, 1000)) {
+		 /* atualiza frequencia */
+		 delayTicks += 100;
+
+		 /* envia nova frequencia para a task_led */
+		 xQueueSend(xQueueLedFreq, (void *)&delayTicks, 10);
+
+		 /* garante range da freq. */
+		 if (delayTicks == 3000) {
+			 delayTicks = 2000;
+		 }
+	}
   }
 }
 
@@ -261,23 +272,18 @@ void configure_interruption(Pio *p_pio, uint32_t ul_id, uint32_t ul_mask, uint32
 	pio_enable_interrupt(p_pio, ul_mask);
 	pio_get_interrupt_status(p_pio);
 	NVIC_EnableIRQ(ul_id);
-	NVIC_SetPriority(ul_id, 4);
+	NVIC_SetPriority(ul_id, 5);
 }
 
-void init(void) {
-	// Initialize the board clock
-	sysclk_init();
-
-	// Deactivate WatchDog Timer
-	WDT->WDT_MR = WDT_MR_WDDIS;
-	
+void LED_init(int estado){
 	// LEDs OLED1
 	configure_output(LED_PIO, PIO_OUTPUT_0, LED_PIO_IDX_MASK, PIO_DEFAULT, LED_PIO_ID);
 	configure_output(LED1_PIO, PIO_OUTPUT_0, LED1_PIO_IDX_MASK, PIO_DEFAULT, LED1_PIO_ID);
 	configure_output(LED2_PIO, PIO_OUTPUT_0, LED2_PIO_IDX_MASK, PIO_DEFAULT, LED2_PIO_ID);
 	configure_output(LED3_PIO, PIO_OUTPUT_0, LED3_PIO_IDX_MASK, PIO_DEFAULT, LED2_PIO_ID);
-	
-	
+}
+
+void BUT_init(void){
 	configure_input(BUT_PIO, PIO_INPUT, BUT_PIO_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE, BUT_PIO_ID);
 	configure_input(BUT1_PIO, PIO_INPUT, BUT1_PIO_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE, BUT1_PIO_ID);
 	configure_input(BUT2_PIO, PIO_INPUT, BUT2_PIO_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE, BUT2_PIO_ID);
@@ -300,42 +306,57 @@ void init(void) {
  *  \return Unused (ANSI-C compatibility).
  */
 int main(void) {
-  /* Initialize the SAM system */
-  sysclk_init();
-  board_init();
-  configure_console();
+	// Initialize the board clock
+	sysclk_init();
+	board_init();
+	configure_console();
 
-  /* Attempt to create a semaphore. */
-  xSemaphoreBut = xSemaphoreCreateBinary();
-  if (xSemaphoreBut == NULL)
-    printf("falha em criar o semaforo \n");
+	/* Attempt to create a semaphore. */
+	xSemaphoreBut = xSemaphoreCreateBinary();
+	if (xSemaphoreBut == NULL)
+		printf("falha em criar o semaforo \n");
 
-  /* cria queue com 32 "espacos" */
-  /* cada espaço possui o tamanho de um inteiro*/
-  xQueueLedFreq = xQueueCreate(32, sizeof(uint32_t));
-  if (xQueueLedFreq == NULL)
-    printf("falha em criar a queue \n");
+	/* Attempt to create a semaphore. */
+	xSemaphoreBut1 = xSemaphoreCreateBinary();
+	if (xSemaphoreBut1 == NULL)
+		printf("falha em criar o semaforo \n");
 
-  /* Create task to make led blink */
-  if (xTaskCreate(task_led, "Led", TASK_LED_STACK_SIZE, NULL,
+	/* Attempt to create a semaphore. 	
+	xSemaphoreBut2 = xSemaphoreCreateBinary();
+	if (xSemaphoreBut2 == NULL)
+		printf("falha em criar o semaforo \n");
+		
+	Attempt to create a semaphore. 	
+	xSemaphoreBut3 = xSemaphoreCreateBinary();
+	if (xSemaphoreBut3 == NULL)
+		printf("falha em criar o semaforo \n");*/
+
+	/* cria queue com 32 "espacos" */
+	/* cada espaço possui o tamanho de um inteiro*/
+	xQueueLedFreq = xQueueCreate(32, sizeof(uint32_t));
+	if (xQueueLedFreq == NULL)
+		printf("falha em criar a queue \n");
+
+	/* Create task to make led blink */
+	if (xTaskCreate(task_led, "Led", TASK_LED_STACK_SIZE, NULL,
                   TASK_LED_STACK_PRIORITY, NULL) != pdPASS) {
-    printf("Failed to create test led task\r\n");
-  }
+		printf("Failed to create test led task\r\n");
+	}
 
-  /* Create task to monitor processor activity */
-  if (xTaskCreate(task_but, "BUT", TASK_BUT_STACK_SIZE, NULL,
+	/* Create task to monitor processor activity */
+	if (xTaskCreate(task_but, "BUT", TASK_BUT_STACK_SIZE, NULL,
                   TASK_BUT_STACK_PRIORITY, NULL) != pdPASS) {
-    printf("Failed to create UartTx task\r\n");
-  }
+		printf("Failed to create UartTx task\r\n");
+	}	
 
-  /* Start the scheduler. */
-  vTaskStartScheduler();
+	/* Start the scheduler. */
+	vTaskStartScheduler();
 
-  /* RTOS não deve chegar aqui !! */
-  while (1) {
-  }
+	/* RTOS não deve chegar aqui !! */
+	while (1) {
+	}
 
-  /* Will only get here if there was insufficient memory to create the idle
-   * task. */
-  return 0;
+	/* Will only get here if there was insufficient memory to create the idle
+	* task. */
+	return 0;
 }
