@@ -31,7 +31,7 @@ extern void xPortSysTickHandler(void);
 /************************************************************************/
 
 /** Queue for msg log send data */
-QueueHandle_t xQueueADC;
+QueueHandle_t xQueueADC, xQueuePROC;
 
 typedef struct {
   uint value;
@@ -96,26 +96,47 @@ static void AFEC_pot_Callback(void) {
   adcData adc;
   adc.value = afec_channel_get_value(AFEC_POT, AFEC_POT_CHANNEL);
   BaseType_t xHigherPriorityTaskWoken = pdTRUE;
-  xQueueSendFromISR(xQueueADC, &adc, &xHigherPriorityTaskWoken);
+  xQueueSendFromISR(xQueuePROC, &adc, &xHigherPriorityTaskWoken);
 }
 
 /************************************************************************/
 /* TASKS                                                                */
 /************************************************************************/
 
+
+static void task_proc(void *pvParameters) {
+	config_AFEC_pot(AFEC_POT, AFEC_POT_ID, AFEC_POT_CHANNEL, AFEC_pot_Callback);
+	TC_init(TC0, ID_TC1, 1, 10);
+	tc_start(TC0, 1);
+
+	adcData adc;
+	int i = 0;
+	int mean;
+	int sum = 0;
+
+	while (1)
+	{
+		while(i < 10){
+			if (xQueueReceive(xQueuePROC, &(adc), 1000))
+			{
+				sum += adc.value;
+				i++;
+			}
+		}
+		i = 0;
+		mean = sum / 10;
+		sum = 0;
+		xQueueSend(xQueueADC, (void *)&mean, 10);
+	}
+}
+
 static void task_adc(void *pvParameters) {
-
-  // configura ADC e TC para controlar a leitura
-  config_AFEC_pot(AFEC_POT, AFEC_POT_ID, AFEC_POT_CHANNEL, AFEC_pot_Callback);
-  TC_init(TC0, ID_TC1, 1, 10);
-  tc_start(TC0, 1);
-
   // variável para recever dados da fila
-  adcData adc;
+  int mean;
 
   while (1) {
-    if (xQueueReceive(xQueueADC, &(adc), 1000)) {
-      printf("ADC: %d \n", adc);
+    if (xQueueReceive(xQueueADC, &(mean), 1000)) {
+		printf("ADC: %d \n", mean);
     } else {
       printf("Nao chegou um novo dado em 1 segundo");
     }
@@ -219,13 +240,20 @@ int main(void) {
   board_init();
   configure_console();
 
-  xQueueADC = xQueueCreate(100, sizeof(adcData));
-  if (xQueueADC == NULL)
-    printf("falha em criar a queue xQueueADC \n");
+	xQueueADC = xQueueCreate(100, sizeof(int));
+	if (xQueueADC == NULL)
+		printf("falha em criar a queue xQueueADC \n");
+	xQueuePROC = xQueueCreate(100, sizeof(adcData));
+	if (xQueueADC == NULL)
+		printf("falha em criar a queue xQueueADC \n");
 
   if (xTaskCreate(task_adc, "ADC", TASK_ADC_STACK_SIZE, NULL,
                   TASK_ADC_STACK_PRIORITY, NULL) != pdPASS) {
     printf("Failed to create test ADC task\r\n");
+  }
+  if (xTaskCreate(task_proc, "PROC", TASK_ADC_STACK_SIZE, NULL,
+  TASK_ADC_STACK_PRIORITY, NULL) != pdPASS) {
+	  printf("Failed to create test PROC task\r\n");
   }
 
   vTaskStartScheduler();
