@@ -79,6 +79,7 @@ SemaphoreHandle_t xSemaphoreBut3;
 
 /** Queue for msg log send data */
 QueueHandle_t xQueueLedFreq;
+QueueHandle_t xQueueButFreq;
 
 /************************************************************************/
 /* prototypes local                                                     */
@@ -137,13 +138,13 @@ extern void vApplicationMallocFailedHook(void) {
 /************************************************************************/
 
 void but_callback(void) {
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	xSemaphoreGiveFromISR(xSemaphoreBut, &xHigherPriorityTaskWoken);
+	char but = '1';
+	xQueueSendFromISR(xQueueButFreq, &but, 0);
 }
 
 void but1_callback(void) {
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-	xSemaphoreGiveFromISR(xSemaphoreBut1, &xHigherPriorityTaskWoken);
+	char but = '2';
+	xQueueSendFromISR(xQueueButFreq, &but, 0);
 }
 
 void but2_callback(void) {
@@ -176,7 +177,7 @@ static void task_led(void *pvParameters) {
        */
       /* converte ms -> ticks */
       delayMs = msg / portTICK_PERIOD_MS;
-      printf("delay = %d \n", delayMs);
+      printf("delay = %d \n\n", delayMs);
     }
 
     /* pisca LED */
@@ -193,31 +194,36 @@ static void task_but(void *pvParameters) {
   BUT_init();
 
   uint32_t delayTicks = 2000;
+  
+  xQueueButFreq = xQueueCreate(32, sizeof(char));
+  if (xQueueButFreq == NULL)
+	printf("falha em criar a queue \n");
 
   for (;;) {
     /* aguarda por tempo inderteminado até a liberacao do semaforo */
-    if (xSemaphoreTake(xSemaphoreBut, 1000)) {
-	    /* atualiza frequencia */
-	    delayTicks -= 100;
+	char msg = -1;
+    if (xQueueReceive(xQueueButFreq, &msg, (TickType_t) 500)) {
+		printf("QueueBut received\n", msg);
+		printf("but = %c \n", msg);
+		if(msg == '1') {
+			delayTicks -= 100;
+			printf("but = %c \n", msg);
+			xQueueSend(xQueueLedFreq, (void *)&delayTicks, 10);
 
-	    /* envia nova frequencia para a task_led */
-	    xQueueSend(xQueueLedFreq, (void *)&delayTicks, 10);
+			/* garante range da freq. */
+			if (delayTicks == 100) {
+				delayTicks = 900;
+			}
+		} else if (msg == '2') {
+			delayTicks += 100;
+			printf("but = %c \n", msg);
+			xQueueSend(xQueueLedFreq, (void *)&delayTicks, 10);
 
-	    /* garante range da freq. */
-	    if (delayTicks == 100) {
-		    delayTicks = 900;
-	    }
-    } else if (xSemaphoreTake(xSemaphoreBut1, 1000)) {
-		 /* atualiza frequencia */
-		 delayTicks += 100;
-
-		 /* envia nova frequencia para a task_led */
-		 xQueueSend(xQueueLedFreq, (void *)&delayTicks, 10);
-
-		 /* garante range da freq. */
-		 if (delayTicks == 3000) {
-			 delayTicks = 2000;
-		 }
+			/* garante range da freq. */
+			if (delayTicks == 3000) {
+				delayTicks = 2000;
+			}
+		}
 	}
   }
 }
